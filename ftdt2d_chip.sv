@@ -212,9 +212,9 @@ assign speaker_n = !speaker;
 //
 /////////////////////
 /////////////////////////////
-	parameter WIDTH = 45;	// compute array width (columns)
+	parameter WIDTH = 3;	// compute array width (columns)
 	parameter DEPTH = 256;	// memory depth, image height
-	parameter HEIGHT = 44;	// compute array height (rows)
+	parameter HEIGHT = 3;	// compute array height (rows)
 	parameter DBITS = 8;		// depth address bitwidth
 	parameter GENS  = 1;	// hardware Generations per pass
 	parameter WIDTH_B = 16;  // blocks wide

@@ -2,6 +2,8 @@
 // A parameterized cellular array and memories
 // Computer array WIDTH x HEIGHT is processed each cycle. 
 // Memory depth = DEPTH
+
+
 module ftdt_2d #(
 	WIDTH = 3,		// Array width = Datapath width
 	DEPTH = 256,	// memory Depth, (ignored, always 256 supported, we use M9Ks as 32bit x 256word rams)
@@ -17,8 +19,24 @@ module ftdt_2d #(
 	input logic [2:0][2:0][7:0] raddr, // also used for init writes
 	input logic [7:0] waddr,
 	input	logic we,
-	// Ceofficient inputs
-	input logic [WIDTH+2*GENS-1:0][HEIGHT+2*GENS-1:0][7:0][FBITS-1:0] coeff,
+	// Excitation input
+	input logic [WIDTH-1:0] excite_col_flag,
+	input logic [FBITS-1:0] excitation,
+	// PML Col 
+	input logic [WIDTH-1:0] pml_col_flag,
+	input logic [WIDTH-1:0][2:0] pml_sel, 
+	// Ex,Ey
+	input logic [WIDTH-1:0][HEIGHT-1:0][FBITS-1:0] alpha_ex,
+	input logic [WIDTH-1:0][HEIGHT-1:0][FBITS-1:0] alpha_exex,
+	input logic [WIDTH-1:0][HEIGHT-1:0][FBITS-1:0] alpha_ey,
+	input logic [WIDTH-1:0][HEIGHT-1:0][FBITS-1:0] alpha_eyey,
+	// Hzx, Hzy
+	input logic [WIDTH-1:0][HEIGHT-1:0][FBITS-1:0] alpha_hzx,
+	input logic [WIDTH-1:0][HEIGHT-1:0][FBITS-1:0] alpha_hzy,
+	input logic [WIDTH-1:0][HEIGHT-1:0][FBITS-1:0] alpha_hzxhz,
+	input logic [WIDTH-1:0][HEIGHT-1:0][FBITS-1:0] alpha_hzyhz,
+	
+	
 	// External Data Control
 	input logic ld,
 	output logic [4*FBITS*HEIGHT*WIDTH*-1:0] dout, // snapshot of array
@@ -171,8 +189,8 @@ module ftdt_2d #(
 		for( int yy = 1; yy < HEIGHT+2*GENS; yy++ ) begin
 			for( int xx = 1; xx < WIDTH+2*GENS; xx++ ) begin
 				// Stage Calc
-				dhzx2[yy][xx] <= hz1[yy][xx] - hz1[yy][xx-1]; // nowrap?	
-				dhzy2[yy][xx] <= hz1[yy][xx] - hz1[yy-1][xx];	
+				dhzy2[yy][xx] <= hz1[yy][xx] - hz1[yy-1][xx]; // nowrap?	
+				dhzx2[yy][xx] <= hz1[yy][xx] - hz1[yy][xx-1];	
 			end //xx
 		end //yy
 	end // always
@@ -199,10 +217,10 @@ module ftdt_2d #(
 	generate
 		for( genyy = 0; genyy < HEIGHT+2*GENS; genyy++ ) begin : i_emuly
 			for( genxx = 0; genxx < WIDTH+2*GENS; genxx++ ) begin : i_emulx
-				smult18 i_emul0 ( .clk( clk ), .dataout(   scale_ey4[genyy][genxx] ), .dataa(   ey2[genyy][genxx] ), .datab( coeff[genyy][genxx][0] ) );
-				smult18 i_emul1 ( .clk( clk ), .dataout( scale_dhzx4[genyy][genxx] ), .dataa( dhzx2[genyy][genxx] ), .datab( coeff[genyy][genxx][1] ) );
-				smult18 i_emul2 ( .clk( clk ), .dataout(   scale_ex4[genyy][genxx] ), .dataa(   ex2[genyy][genxx] ), .datab( coeff[genyy][genxx][2] ) );
-				smult18 i_emul3 ( .clk( clk ), .dataout( scale_dhzx4[genyy][genxx] ), .dataa( dhzy2[genyy][genxx] ), .datab( coeff[genyy][genxx][3] ) );
+				smult18 i_emul0 ( .clk( clk ), .dataout(   scale_ey4[genyy][genxx] ), .dataa(   ey2[genyy][genxx] ), .datab( alpha_eyey ) );
+				smult18 i_emul1 ( .clk( clk ), .dataout( scale_dhzy4[genyy][genxx] ), .dataa( dhzx2[genyy][genxx] ), .datab( alpha_ey   ) );
+				smult18 i_emul2 ( .clk( clk ), .dataout(   scale_ex4[genyy][genxx] ), .dataa(   ex2[genyy][genxx] ), .datab( alpha_exex ) );
+				smult18 i_emul3 ( .clk( clk ), .dataout( scale_dhzx4[genyy][genxx] ), .dataa( dhzy2[genyy][genxx] ), .datab( alpha_ex   ) );
 			end // xx
 		end // yy	
 	endgenerate
@@ -256,12 +274,12 @@ module ftdt_2d #(
 				hzy6[yy][xx] <= hzy5[yy][xx];
 			end // xx
 		end // yy
-		// offset from LR corner
+		// offset into LR corner
 		for( int yy = 0; yy < HEIGHT+2*GENS-1; yy++ ) begin
 			for( int xx = 0; xx < WIDTH+2*GENS-1; xx++ ) begin
 				// Stage Calc
-				dexy6[yy][xx] <= ex5[yy][xx] - ex5[yy][xx-1]; // nowrap?	
-				deyx6[yy][xx] <= ey5[yy][xx] - ey5[yy-1][xx];	
+				dexy6[yy][xx] <= ex5[yy+1][xx] - ex5[yy][xx]; // nowrap?	
+				deyx6[yy][xx] <= ey5[yy][xx+1] - ey5[yy][xx];	
 			end //xx
 		end //yy
 	end // always
@@ -288,10 +306,10 @@ module ftdt_2d #(
 	generate
 		for( genyy = 0; genyy < HEIGHT+2*GENS; genyy++ ) begin : i_hmuly
 			for( genxx = 0; genxx < WIDTH+2*GENS; genxx++ ) begin : i_hmulx
-				smult18 i_hmul4 ( .clk( clk ), .dataout(  scale_hzy8[genyy][genxx] ), .dataa(  hzy6[genyy][genxx] ), .datab( coeff[genyy][genxx][4] ) );
-				smult18 i_hmul5 ( .clk( clk ), .dataout( scale_deyx8[genyy][genxx] ), .dataa( deyx6[genyy][genxx] ), .datab( coeff[genyy][genxx][5] ) );
-				smult18 i_hmul6 ( .clk( clk ), .dataout(  scale_hzx8[genyy][genxx] ), .dataa(  hzx6[genyy][genxx] ), .datab( coeff[genyy][genxx][6] ) );
-				smult18 i_hmul7 ( .clk( clk ), .dataout( scale_dexy8[genyy][genxx] ), .dataa( dexy6[genyy][genxx] ), .datab( coeff[genyy][genxx][7] ) );
+				smult18 i_hmul4 ( .clk( clk ), .dataout(  scale_hzy8[genyy][genxx] ), .dataa(  hzy6[genyy][genxx] ), .datab( alpha_hzyhz ) );
+				smult18 i_hmul5 ( .clk( clk ), .dataout( scale_deyx8[genyy][genxx] ), .dataa( deyx6[genyy][genxx] ), .datab( alpha_hzy   ) );
+				smult18 i_hmul6 ( .clk( clk ), .dataout(  scale_hzx8[genyy][genxx] ), .dataa(  hzx6[genyy][genxx] ), .datab( alpha_hzxhz ) );
+				smult18 i_hmul7 ( .clk( clk ), .dataout( scale_dexy8[genyy][genxx] ), .dataa( dexy6[genyy][genxx] ), .datab( alpha_hzx   ) );
 			end // xx
 		end // yy	
 	endgenerate
